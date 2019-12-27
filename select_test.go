@@ -119,6 +119,62 @@ func TestSelectBuilderFromSelect(t *testing.T) {
 	assert.Equal(t, expectedArgs, args)
 }
 
+func TestSelectBuilderUnionAll(t *testing.T) {
+	testCases := []struct {
+		name    string
+		query   SelectBuilder
+		expSQL  string
+		expArgs []interface{}
+	}{
+		{
+			name: "single",
+			query: func() SelectBuilder {
+				subQ := Select("a", "b").From("c01").PreWhere(Eq{"i": 0}).Where(Eq{"i": 1})
+				return Select("a", "b").FromSelect(subQ, "subQ").PreWhere(Eq{"m": 6}).Where(Eq{"n": 7})
+			}(),
+			expSQL: "SELECT a, b FROM (SELECT a, b FROM c01 PREWHERE i = ? WHERE i = ?) " +
+				"AS subQ PREWHERE m = ? WHERE n = ?",
+			expArgs: []interface{}{0, 1, 6, 7},
+		},
+		{
+			name: "double",
+			query: func() SelectBuilder {
+				subQ01 := Select("a", "b").From("c01").PreWhere(Eq{"i": 0}).Where(Eq{"i": 1})
+				subQ02 := Select("a", "b").From("c02").PreWhere(Eq{"j": 2}).Where(Eq{"j": 3})
+				subQ := subQ01.UnionAll(subQ02)
+				return Select("a", "b").FromSelect(subQ, "subQ").PreWhere(Eq{"m": 6}).Where(Eq{"n": 7})
+			}(),
+			expSQL: "SELECT a, b FROM (" +
+				"SELECT a, b FROM c01 PREWHERE i = ? WHERE i = ? UNION ALL " +
+				"SELECT a, b FROM c02 PREWHERE j = ? WHERE j = ?) AS subQ PREWHERE m = ? WHERE n = ?",
+			expArgs: []interface{}{0, 1, 2, 3, 6, 7},
+		},
+		{
+			name: "triple",
+			query: func() SelectBuilder {
+				subQ01 := Select("a", "b").From("c01").PreWhere(Eq{"i": 0}).Where(Eq{"i": 1})
+				subQ02 := Select("a", "b").From("c02").PreWhere(Eq{"j": 2}).Where(Eq{"j": 3})
+				subQ03 := Select("a", "b").From("c03").PreWhere(Eq{"k": 4}).Where(Eq{"k": 5})
+				subQ := subQ01.UnionAll(subQ02).UnionAll(subQ03)
+				return Select("a", "b").FromSelect(subQ, "subQ").PreWhere(Eq{"m": 6}).Where(Eq{"n": 7})
+			}(),
+			expSQL: "SELECT a, b FROM (" +
+				"SELECT a, b FROM c01 PREWHERE i = ? WHERE i = ? UNION ALL " +
+				"SELECT a, b FROM c02 PREWHERE j = ? WHERE j = ? UNION ALL " +
+				"SELECT a, b FROM c03 PREWHERE k = ? WHERE k = ?) AS subQ PREWHERE m = ? WHERE n = ?",
+			expArgs: []interface{}{0, 1, 2, 3, 4, 5, 6, 7},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			sql, args, err := tc.query.ToSql()
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expSQL, sql)
+			assert.Equal(t, tc.expArgs, args)
+		})
+	}
+}
+
 func TestSelectBuilderFromSelectNestedDollarPlaceholders(t *testing.T) {
 	subQ := Select("c").
 		From("t").

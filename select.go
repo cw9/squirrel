@@ -25,6 +25,7 @@ type selectData struct {
 	Limit             string
 	Offset            string
 	Suffixes          exprs
+	UnionAll          []Sqlizer
 }
 
 func (d *selectData) Exec() (sql.Result, error) {
@@ -159,6 +160,15 @@ func (d *selectData) toSql() (sqlStr string, args []interface{}, err error) {
 	if len(d.Suffixes) > 0 {
 		sql.WriteString(" ")
 		args, _ = d.Suffixes.AppendToSql(sql, " ", args)
+	}
+
+	if len(d.UnionAll) > 0 {
+		sep := " UNION ALL "
+		sql.WriteString(sep)
+		args, err = appendToSql(d.UnionAll, sql, sep, args)
+		if err != nil {
+			return
+		}
 	}
 
 	sqlStr = sql.String()
@@ -400,4 +410,9 @@ func (b SelectBuilder) RemoveOffset() SelectBuilder {
 // Suffix adds an expression to the end of the query
 func (b SelectBuilder) Suffix(sql string, args ...interface{}) SelectBuilder {
 	return builder.Append(b, "Suffixes", Expr(sql, args...)).(SelectBuilder)
+}
+
+// UnionAll adds a sub query to do Union.
+func (b SelectBuilder) UnionAll(subQ SelectBuilder) SelectBuilder {
+	return builder.Append(b, "UnionAll", newPart(subQ)).(SelectBuilder)
 }
